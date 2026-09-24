@@ -27,50 +27,59 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
-.env
-.venv
-env/
+# Virtual Environments
+.venv/
 venv/
 ENV/
+env/
 env.bak/
 venv.bak/
 
-# FastAPI specific / environment variables
+# Environment variables and secrets (NEVER commit these)
+.env
 .env.*
 !.env.example
-.secrets
 secrets.toml
 
-# Testing and linting
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-.pyre/
-.pytype/
-
-# Database (if using local SQLite for development)
+# FastAPI / SQL Databases (if using local SQLite for development)
 *.db
+*.sqlite
 *.sqlite3
 
 # Logging
+logs/
 *.log
+*.out
 
-# Editor-specific settings
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
+# Unit testing / Coverage reports
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
 
-# OS generated files
+# Type checkers and linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# OS-specific files
 .DS_Store
 .DS_Store?
-._*
-Thumbs.db
 ehthumbs.db
-Desktop.ini
+Icon?
+Thumbs.db
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
