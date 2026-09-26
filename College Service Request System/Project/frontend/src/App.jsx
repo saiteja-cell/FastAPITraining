@@ -11,8 +11,13 @@ function App() {
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("cat001");
 
-  // Each request now has its own staff input
+  // Each request has its own staff input
   const [staffIds, setStaffIds] = useState({});
+
+  // Admin page
+  const [adminPage, setAdminPage] = useState("dashboard");
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminCategories, setAdminCategories] = useState([]);
 
   const categoryNames = {
     cat001: "Bonafide Certificate",
@@ -30,6 +35,14 @@ function App() {
     on_hold: "On Hold",
     resolved: "Resolved",
     closed: "Closed",
+  };
+
+  const roleNames = {
+    student: "Student",
+    faculty: "Faculty",
+    service_staff: "Service Staff",
+    service_lead: "Service Lead",
+    admin: "Administrator",
   };
 
   const getStatusClass = (status) => {
@@ -90,7 +103,10 @@ function App() {
 
       setUser(userData);
 
-      // Load requests immediately after login
+      // Reset admin page
+      setAdminPage("dashboard");
+
+      // Load requests after login
       const requestResponse = await fetch(
         "http://127.0.0.1:8000/service-requests/",
         {
@@ -258,13 +274,74 @@ function App() {
 
       alert("Request assigned successfully!");
 
-      // Clear only this request's input
       setStaffIds((prev) => ({
         ...prev,
         [requestId]: "",
       }));
 
       loadRequests();
+    } catch (error) {
+      alert("Could not connect to backend");
+    }
+  };
+
+  // =========================================================
+  // ADMIN - LOAD USERS
+  // =========================================================
+
+  const loadAdminUsers = async () => {
+    const token = localStorage.getItem("access_token");
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/users/",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.detail || "Could not load users");
+        return;
+      }
+
+      setAdminUsers(data);
+      setAdminPage("users");
+    } catch (error) {
+      alert("Could not connect to backend");
+    }
+  };
+
+  // =========================================================
+  // ADMIN - LOAD CATEGORIES
+  // =========================================================
+
+  const loadAdminCategories = async () => {
+    const token = localStorage.getItem("access_token");
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/categories/",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.detail || "Could not load categories");
+        return;
+      }
+
+      setAdminCategories(data);
+      setAdminPage("categories");
     } catch (error) {
       alert("Could not connect to backend");
     }
@@ -285,6 +362,9 @@ function App() {
     setDescription("");
     setCategoryId("cat001");
     setStaffIds({});
+    setAdminPage("dashboard");
+    setAdminUsers([]);
+    setAdminCategories([]);
   };
 
   // =========================================================
@@ -295,6 +375,7 @@ function App() {
     return (
       <div className="login-page">
         <div className="login-card">
+
           <div className="login-brand">
             <div className="brand-icon">CS</div>
 
@@ -310,6 +391,7 @@ function App() {
           </div>
 
           <form onSubmit={handleLogin} className="login-form">
+
             <div className="form-group">
               <label>Email Address</label>
 
@@ -340,30 +422,20 @@ function App() {
             >
               Sign In
             </button>
+
           </form>
 
           <div className="login-footer">
             College Service Request System
           </div>
+
         </div>
       </div>
     );
   }
 
   // =========================================================
-  // ROLE INFORMATION
-  // =========================================================
-
-  const roleNames = {
-    student: "Student",
-    faculty: "Faculty",
-    service_staff: "Service Staff",
-    service_lead: "Service Lead",
-    admin: "Administrator",
-  };
-
-  // =========================================================
-  // DASHBOARD
+  // MAIN APPLICATION
   // =========================================================
 
   return (
@@ -374,23 +446,51 @@ function App() {
       ===================================================== */}
 
       <aside className="sidebar">
+
         <div className="sidebar-brand">
-          <div className="brand-icon small">CS</div>
+
+          <div className="brand-icon small">
+            CS
+          </div>
 
           <div>
             <h2>College Service</h2>
             <span>Request System</span>
           </div>
+
         </div>
 
         <div className="sidebar-divider"></div>
 
         <nav className="sidebar-nav">
 
-          <div className="nav-item active">
+          {/* DASHBOARD */}
+
+          <div
+            className={`nav-item ${
+              user.role === "admin" &&
+              adminPage !== "dashboard"
+                ? ""
+                : "active"
+            }`}
+            onClick={() => {
+              if (user.role === "admin") {
+                setAdminPage("dashboard");
+              }
+            }}
+            style={{
+              cursor:
+                user.role === "admin"
+                  ? "pointer"
+                  : "default",
+            }}
+          >
             <span className="nav-icon">⌂</span>
             Dashboard
           </div>
+
+
+          {/* STUDENT / FACULTY */}
 
           {(user.role === "student" ||
             user.role === "faculty") && (
@@ -400,12 +500,18 @@ function App() {
             </div>
           )}
 
+
+          {/* SERVICE STAFF */}
+
           {user.role === "service_staff" && (
             <div className="nav-item">
               <span className="nav-icon">✓</span>
               Assigned Requests
             </div>
           )}
+
+
+          {/* SERVICE LEAD */}
 
           {user.role === "service_lead" && (
             <div className="nav-item">
@@ -414,8 +520,19 @@ function App() {
             </div>
           )}
 
+
+          {/* ADMIN */}
+
           {user.role === "admin" && (
-            <div className="nav-item">
+            <div
+              className={`nav-item ${
+                adminPage !== "dashboard"
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() => setAdminPage("users")}
+              style={{ cursor: "pointer" }}
+            >
               <span className="nav-icon">⚙</span>
               Administration
             </div>
@@ -426,6 +543,7 @@ function App() {
         <div className="sidebar-bottom">
 
           <div className="user-mini">
+
             <div className="avatar">
               {user.name?.charAt(0).toUpperCase()}
             </div>
@@ -434,6 +552,7 @@ function App() {
               <strong>{user.name}</strong>
               <span>{roleNames[user.role]}</span>
             </div>
+
           </div>
 
           <button
@@ -445,7 +564,9 @@ function App() {
           </button>
 
         </div>
+
       </aside>
+
 
       {/* =====================================================
           MAIN CONTENT
@@ -456,8 +577,26 @@ function App() {
         <header className="topbar">
 
           <div>
-            <p className="topbar-label">Dashboard</p>
-            <h1>Welcome back, {user.name}</h1>
+
+            <p className="topbar-label">
+              {user.role === "admin" && adminPage === "users"
+                ? "Administration"
+                : user.role === "admin" &&
+                  adminPage === "categories"
+                ? "Administration"
+                : "Dashboard"}
+            </p>
+
+            <h1>
+              {user.role === "admin" &&
+              adminPage === "users"
+                ? "User Management"
+                : user.role === "admin" &&
+                  adminPage === "categories"
+                ? "Service Categories"
+                : `Welcome back, ${user.name}`}
+            </h1>
+
           </div>
 
           <div className="topbar-user">
@@ -474,6 +613,7 @@ function App() {
           </div>
 
         </header>
+
 
         {/* ===================================================
             STUDENT
@@ -493,6 +633,7 @@ function App() {
                 </div>
               </div>
 
+
               <div className="stat-card">
                 <div className="stat-icon orange">◷</div>
 
@@ -510,6 +651,7 @@ function App() {
                   </strong>
                 </div>
               </div>
+
 
               <div className="stat-card">
                 <div className="stat-icon green">✓</div>
@@ -531,6 +673,7 @@ function App() {
 
             </section>
 
+
             <section className="content-grid">
 
               <div className="panel">
@@ -539,12 +682,14 @@ function App() {
 
                   <div>
                     <h2>Create Service Request</h2>
+
                     <p>
                       Submit a new request to the service office.
                     </p>
                   </div>
 
                 </div>
+
 
                 <form
                   onSubmit={createRequest}
@@ -567,6 +712,7 @@ function App() {
 
                   </div>
 
+
                   <div className="form-group">
 
                     <label>Description</label>
@@ -581,6 +727,7 @@ function App() {
                     />
 
                   </div>
+
 
                   <div className="form-group">
 
@@ -621,6 +768,7 @@ function App() {
 
                   </div>
 
+
                   <button
                     type="submit"
                     className="primary-button"
@@ -634,12 +782,14 @@ function App() {
 
             </section>
 
+
             <section className="panel requests-panel">
 
               <div className="panel-header">
 
                 <div>
                   <h2>My Service Requests</h2>
+
                   <p>
                     Track the status of your submitted requests.
                   </p>
@@ -654,6 +804,7 @@ function App() {
 
               </div>
 
+
               <RequestList
                 requests={requests}
                 categoryNames={categoryNames}
@@ -665,6 +816,7 @@ function App() {
 
           </>
         )}
+
 
         {/* ===================================================
             FACULTY
@@ -684,6 +836,7 @@ function App() {
                 </div>
               </div>
 
+
               <div className="stat-card">
                 <div className="stat-icon orange">◷</div>
 
@@ -701,6 +854,7 @@ function App() {
                   </strong>
                 </div>
               </div>
+
 
               <div className="stat-card">
                 <div className="stat-icon green">✓</div>
@@ -722,6 +876,7 @@ function App() {
 
             </section>
 
+
             <section className="content-grid">
 
               <div className="panel">
@@ -730,12 +885,14 @@ function App() {
 
                   <div>
                     <h2>Create Service Request</h2>
+
                     <p>
                       Submit a new request to the service office.
                     </p>
                   </div>
 
                 </div>
+
 
                 <form
                   onSubmit={createRequest}
@@ -758,6 +915,7 @@ function App() {
 
                   </div>
 
+
                   <div className="form-group">
 
                     <label>Description</label>
@@ -772,6 +930,7 @@ function App() {
                     />
 
                   </div>
+
 
                   <div className="form-group">
 
@@ -812,6 +971,7 @@ function App() {
 
                   </div>
 
+
                   <button
                     type="submit"
                     className="primary-button"
@@ -825,12 +985,14 @@ function App() {
 
             </section>
 
+
             <section className="panel requests-panel">
 
               <div className="panel-header">
 
                 <div>
                   <h2>My Service Requests</h2>
+
                   <p>
                     Track the status of your submitted requests.
                   </p>
@@ -845,6 +1007,7 @@ function App() {
 
               </div>
 
+
               <RequestList
                 requests={requests}
                 categoryNames={categoryNames}
@@ -857,6 +1020,7 @@ function App() {
           </>
         )}
 
+
         {/* ===================================================
             SERVICE STAFF
         =================================================== */}
@@ -867,11 +1031,13 @@ function App() {
             <section className="page-intro">
 
               <div>
+
                 <h2>Assigned Requests</h2>
 
                 <p>
                   View and process service requests assigned to you.
                 </p>
+
               </div>
 
               <button
@@ -882,6 +1048,7 @@ function App() {
               </button>
 
             </section>
+
 
             <section className="request-list">
 
@@ -924,9 +1091,11 @@ function App() {
 
                     </div>
 
+
                     <p className="request-description">
                       {request.description}
                     </p>
+
 
                     <div className="request-actions">
 
@@ -944,8 +1113,10 @@ function App() {
                         </button>
                       )}
 
+
                       {request.status === "in_progress" && (
                         <>
+
                           <button
                             className="warning-button"
                             onClick={() =>
@@ -958,6 +1129,7 @@ function App() {
                             Put On Hold
                           </button>
 
+
                           <button
                             className="success-button"
                             onClick={() =>
@@ -969,8 +1141,10 @@ function App() {
                           >
                             Resolve
                           </button>
+
                         </>
                       )}
+
 
                       {request.status === "on_hold" && (
                         <button
@@ -986,6 +1160,7 @@ function App() {
                         </button>
                       )}
 
+
                       {request.status === "resolved" && (
                         <button
                           className="success-button"
@@ -999,6 +1174,7 @@ function App() {
                           Close Request
                         </button>
                       )}
+
 
                       {request.status === "closed" && (
                         <span className="completed-text">
@@ -1018,6 +1194,7 @@ function App() {
 
           </>
         )}
+
 
         {/* ===================================================
             SERVICE LEAD
@@ -1046,6 +1223,7 @@ function App() {
               </button>
 
             </section>
+
 
             <section className="request-list">
 
@@ -1088,9 +1266,11 @@ function App() {
 
                     </div>
 
+
                     <p className="request-description">
                       {request.description}
                     </p>
+
 
                     <div className="assignment-info">
 
@@ -1103,11 +1283,8 @@ function App() {
 
                     </div>
 
-                    <div className="assignment-area">
 
-                      {/* IMPORTANT:
-                          Each request uses its own value
-                      */}
+                    <div className="assignment-area">
 
                       <input
                         type="text"
@@ -1120,6 +1297,7 @@ function App() {
                           }))
                         }
                       />
+
 
                       <button
                         className="primary-button"
@@ -1143,6 +1321,7 @@ function App() {
           </>
         )}
 
+
         {/* ===================================================
             ADMIN
         =================================================== */}
@@ -1150,109 +1329,380 @@ function App() {
         {user.role === "admin" && (
           <>
 
-            <section className="stats-grid">
+            {/* =================================================
+                ADMIN DASHBOARD
+            ================================================= */}
 
-              <div className="stat-card">
+            {adminPage === "dashboard" && (
+              <>
 
-                <div className="stat-icon blue">
-                  U
-                </div>
+                <section className="stats-grid">
 
-                <div>
-                  <span>System Users</span>
-                  <strong>5</strong>
-                </div>
+                  <div className="stat-card">
 
-              </div>
+                    <div className="stat-icon blue">
+                      U
+                    </div>
 
-              <div className="stat-card">
+                    <div>
+                      <span>System Users</span>
+                      <strong>5</strong>
+                    </div>
 
-                <div className="stat-icon purple">
-                  S
-                </div>
+                  </div>
 
-                <div>
-                  <span>Service Categories</span>
-                  <strong>6</strong>
-                </div>
 
-              </div>
+                  <div className="stat-card">
 
-              <div className="stat-card">
+                    <div className="stat-icon purple">
+                      S
+                    </div>
 
-                <div className="stat-icon green">
-                  ✓
-                </div>
+                    <div>
+                      <span>Service Categories</span>
+                      <strong>6</strong>
+                    </div>
 
-                <div>
-                  <span>System Status</span>
-                  <strong>Active</strong>
-                </div>
+                  </div>
 
-              </div>
 
-            </section>
+                  <div className="stat-card">
 
-            <section className="admin-grid">
+                    <div className="stat-icon green">
+                      ✓
+                    </div>
 
-              <div className="panel">
+                    <div>
+                      <span>System Status</span>
+                      <strong>Active</strong>
+                    </div>
 
-                <div className="admin-icon blue-bg">
-                  U
-                </div>
+                  </div>
 
-                <h2>User Management</h2>
+                </section>
 
-                <p>
-                  Manage student, faculty, service staff,
-                  service lead, and administrator accounts.
-                </p>
 
-                <div className="feature-label">
-                  Available
-                </div>
+                <section className="admin-grid">
 
-              </div>
+                  {/* USER MANAGEMENT */}
 
-              <div className="panel">
+                  <div
+                    className="panel"
+                    onClick={loadAdminUsers}
+                    style={{ cursor: "pointer" }}
+                  >
 
-                <div className="admin-icon purple-bg">
-                  S
-                </div>
+                    <div className="admin-icon blue-bg">
+                      U
+                    </div>
 
-                <h2>Service Categories</h2>
+                    <h2>User Management</h2>
 
-                <p>
-                  Manage the service categories available
-                  in the college service system.
-                </p>
+                    <p>
+                      Manage student, faculty, service staff,
+                      service lead, and administrator accounts.
+                    </p>
 
-                <div className="feature-label">
-                  Available
-                </div>
+                    <div className="feature-label">
+                      Open Management →
+                    </div>
 
-              </div>
+                  </div>
 
-              <div className="panel">
 
-                <div className="admin-icon green-bg">
-                  ⚙
-                </div>
+                  {/* SERVICE CATEGORIES */}
 
-                <h2>System Configuration</h2>
+                  <div
+                    className="panel"
+                    onClick={loadAdminCategories}
+                    style={{ cursor: "pointer" }}
+                  >
 
-                <p>
-                  Administrative configuration for the
-                  college service request system.
-                </p>
+                    <div className="admin-icon purple-bg">
+                      S
+                    </div>
 
-                <div className="feature-label">
-                  Available
-                </div>
+                    <h2>Service Categories</h2>
 
-              </div>
+                    <p>
+                      View and manage the service categories
+                      available in the college service system.
+                    </p>
 
-            </section>
+                    <div className="feature-label">
+                      Open Management →
+                    </div>
+
+                  </div>
+
+
+                  {/* SYSTEM CONFIGURATION
+                      NOT CLICKABLE */}
+
+                  <div className="panel">
+
+                    <div className="admin-icon green-bg">
+                      ⚙
+                    </div>
+
+                    <h2>System Configuration</h2>
+
+                    <p>
+                      Administrative configuration for the
+                      college service request system.
+                    </p>
+
+                    <div className="feature-label">
+                      System Active
+                    </div>
+
+                  </div>
+
+                </section>
+
+              </>
+            )}
+
+
+            {/* =================================================
+                USER MANAGEMENT
+            ================================================= */}
+
+            {adminPage === "users" && (
+              <>
+
+                <section className="page-intro">
+
+                  <div>
+
+                    <h2>User Management</h2>
+
+                    <p>
+                      View all users registered in the college
+                      service request system.
+                    </p>
+
+                  </div>
+
+
+                  <button
+                    className="secondary-button"
+                    onClick={loadAdminUsers}
+                  >
+                    Refresh Users
+                  </button>
+
+                </section>
+
+
+                <section className="panel requests-panel">
+
+                  <div className="panel-header">
+
+                    <div>
+
+                      <h2>System Users</h2>
+
+                      <p>
+                        Students, faculty, service staff,
+                        service leads, and administrators.
+                      </p>
+
+                    </div>
+
+
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        setAdminPage("dashboard")
+                      }
+                    >
+                      ← Back
+                    </button>
+
+                  </div>
+
+
+                  {adminUsers.length === 0 ? (
+
+                    <EmptyState
+                      message="No users found."
+                    />
+
+                  ) : (
+
+                    <div className="request-table">
+
+                      <div className="table-header">
+
+                        <span>Name</span>
+                        <span>Email</span>
+                        <span>Role</span>
+
+                      </div>
+
+
+                      {adminUsers.map((adminUser) => (
+
+                        <div
+                          className="table-row"
+                          key={adminUser.id}
+                        >
+
+                          <div className="table-request">
+
+                            <strong>
+                              {adminUser.name}
+                            </strong>
+
+                            <span>
+                              ID: {adminUser.id}
+                            </span>
+
+                          </div>
+
+
+                          <span>
+                            {adminUser.email}
+                          </span>
+
+
+                          <span>
+                            {roleNames[adminUser.role] ||
+                              adminUser.role}
+                          </span>
+
+                        </div>
+
+                      ))}
+
+                    </div>
+
+                  )}
+
+                </section>
+
+              </>
+            )}
+
+
+            {/* =================================================
+                SERVICE CATEGORIES
+            ================================================= */}
+
+            {adminPage === "categories" && (
+              <>
+
+                <section className="page-intro">
+
+                  <div>
+
+                    <h2>Service Categories</h2>
+
+                    <p>
+                      View the services available in the
+                      college service request system.
+                    </p>
+
+                  </div>
+
+
+                  <button
+                    className="secondary-button"
+                    onClick={loadAdminCategories}
+                  >
+                    Refresh Categories
+                  </button>
+
+                </section>
+
+
+                <section className="panel requests-panel">
+
+                  <div className="panel-header">
+
+                    <div>
+
+                      <h2>Available Services</h2>
+
+                      <p>
+                        Categories used when creating
+                        service requests.
+                      </p>
+
+                    </div>
+
+
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        setAdminPage("dashboard")
+                      }
+                    >
+                      ← Back
+                    </button>
+
+                  </div>
+
+
+                  {adminCategories.length === 0 ? (
+
+                    <EmptyState
+                      message="No categories found."
+                    />
+
+                  ) : (
+
+                    <div className="request-table">
+
+                      <div className="table-header">
+
+                        <span>Category ID</span>
+                        <span>Name</span>
+                        <span>Status</span>
+
+                      </div>
+
+
+                      {adminCategories.map((category) => (
+
+                        <div
+                          className="table-row"
+                          key={category.id}
+                        >
+
+                          <span>
+                            {category.id}
+                          </span>
+
+
+                          <div className="table-request">
+
+                            <strong>
+                              {category.name ||
+                                category.title ||
+                                category.id}
+                            </strong>
+
+                          </div>
+
+
+                          <span className="status-badge status-resolved">
+                            Active
+                          </span>
+
+                        </div>
+
+                      ))}
+
+                    </div>
+
+                  )}
+
+                </section>
+
+              </>
+            )}
 
           </>
         )}
@@ -1261,6 +1711,7 @@ function App() {
     </div>
   );
 }
+
 
 // =========================================================
 // REQUEST LIST COMPONENT
@@ -1289,6 +1740,7 @@ function RequestList({
         <span>Status</span>
       </div>
 
+
       {requests.map((request) => (
 
         <div
@@ -1298,7 +1750,9 @@ function RequestList({
 
           <div className="table-request">
 
-            <strong>{request.title}</strong>
+            <strong>
+              {request.title}
+            </strong>
 
             <span>
               {request.description}
@@ -1306,10 +1760,12 @@ function RequestList({
 
           </div>
 
+
           <span>
             {categoryNames[request.category_id] ||
               request.category_id}
           </span>
+
 
           <span
             className={getStatusClass(request.status)}
@@ -1326,6 +1782,7 @@ function RequestList({
   );
 }
 
+
 // =========================================================
 // EMPTY STATE
 // =========================================================
@@ -1333,10 +1790,16 @@ function RequestList({
 function EmptyState({ message }) {
   return (
     <div className="empty-state">
-      <div className="empty-icon">▣</div>
+
+      <div className="empty-icon">
+        ▣
+      </div>
+
       <p>{message}</p>
+
     </div>
   );
 }
+
 
 export default App;
