@@ -1,195 +1,324 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./index.css";
 
+const API = "http://127.0.0.1:8000";
+
+const categoryNames = {
+  cat001: "Bonafide Certificate",
+  cat002: "ID Card",
+  cat003: "Hostel",
+  cat004: "Transport",
+  cat005: "Library",
+  cat006: "IT Support",
+};
+
+const statusLabels = {
+  new: "New",
+  assigned: "Assigned",
+  in_progress: "In Progress",
+  on_hold: "On Hold",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+const roleNames = {
+  student: "Student",
+  faculty: "Faculty",
+  service_staff: "Service Staff",
+  service_lead: "Service Lead",
+  admin: "Administrator",
+};
+
 function App() {
+  // =========================
+  // AUTH
+  // =========================
+
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // =========================
+  // SIDEBAR
+  // =========================
+
+  const [activePage, setActivePage] = useState("dashboard");
+
+  // =========================
+  // REQUESTS
+  // =========================
 
   const [requests, setRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+
+  // =========================
+  // CREATE REQUEST
+  // =========================
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("cat001");
 
-  // Each request has its own staff input
+  // =========================
+  // SERVICE LEAD
+  // =========================
+
+  const [staffList, setStaffList] = useState([]);
   const [staffIds, setStaffIds] = useState({});
 
-  // Admin page
-  const [adminPage, setAdminPage] = useState("dashboard");
-  const [adminUsers, setAdminUsers] = useState([]);
-  const [adminCategories, setAdminCategories] = useState([]);
+  // =========================
+  // ADMIN
+  // =========================
 
-  const categoryNames = {
-    cat001: "Bonafide Certificate",
-    cat002: "ID Card",
-    cat003: "Hostel",
-    cat004: "Transport",
-    cat005: "Library",
-    cat006: "IT Support",
-  };
+  const [users, setUsers] = useState([]);
 
-  const statusLabels = {
-    new: "New",
-    assigned: "Assigned",
-    in_progress: "In Progress",
-    on_hold: "On Hold",
-    resolved: "Resolved",
-    closed: "Closed",
-  };
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState("student");
 
-  const roleNames = {
-    student: "Student",
-    faculty: "Faculty",
-    service_staff: "Service Staff",
-    service_lead: "Service Lead",
-    admin: "Administrator",
+  // =========================
+  // HELPERS
+  // =========================
+
+  const getToken = () => {
+    return localStorage.getItem("access_token");
   };
 
   const getStatusClass = (status) => {
     return `status-badge status-${status}`;
   };
 
-  // =========================================================
+  const showError = (message) => {
+    alert(message);
+  };
+
+  // =========================
+  // SIDEBAR NAVIGATION
+  // =========================
+
+  const navigateTo = (page) => {
+    setActivePage(page);
+
+    setTimeout(() => {
+      const element = document.getElementById(page);
+
+      if (element) {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 0);
+  };
+
+  // =========================
   // LOGIN
-  // =========================================================
+  // =========================
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
+    setLoading(true);
+
     try {
-      const loginResponse = await fetch(
-        "http://127.0.0.1:8000/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-      const loginData = await loginResponse.json();
+      const data = await response.json();
 
-      if (!loginResponse.ok) {
-        alert(loginData.detail || "Login failed");
+      if (!response.ok) {
+        showError(data.detail || "Login failed");
         return;
       }
 
-      const token = loginData.access_token;
+      const token = data.access_token;
 
       localStorage.setItem("access_token", token);
 
       const payload = JSON.parse(atob(token.split(".")[1]));
       const userId = payload.sub;
 
-      const userResponse = await fetch(
-        `http://127.0.0.1:8000/users/${userId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const userResponse = await fetch(`${API}/users/${userId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const userData = await userResponse.json();
 
       if (!userResponse.ok) {
-        alert("Could not get user details");
+        showError(userData.detail || "Could not load user");
         return;
       }
 
       setUser(userData);
-
-      // Reset admin page
-      setAdminPage("dashboard");
-
-      // Load requests after login
-      const requestResponse = await fetch(
-        "http://127.0.0.1:8000/service-requests/",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const requestData = await requestResponse.json();
-
-      if (requestResponse.ok) {
-        setRequests(requestData);
-      }
+      setActivePage("dashboard");
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // =========================================================
+  // =========================
   // LOAD REQUESTS
-  // =========================================================
+  // =========================
 
   const loadRequests = async () => {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
+
+    if (!token) return;
+
+    setRequestsLoading(true);
 
     try {
-      const response = await fetch(
-        "http://127.0.0.1:8000/service-requests/",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`${API}/service-requests/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.detail || "Could not load requests");
+        showError(data.detail || "Could not load requests");
         return;
       }
 
       setRequests(data);
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
+    } finally {
+      setRequestsLoading(false);
     }
   };
 
-  // =========================================================
-  // CREATE REQUEST
-  // =========================================================
+  // =========================
+  // LOAD STAFF
+  // =========================
 
-  const createRequest = async (e) => {
-    e.preventDefault();
+  const loadStaff = async () => {
+    const token = getToken();
 
-    const token = localStorage.getItem("access_token");
+    if (!token) return;
 
     try {
-      const response = await fetch(
-        "http://127.0.0.1:8000/service-requests/",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            title,
-            description,
-            category_id: categoryId,
-          }),
-        }
-      );
+      const response = await fetch(`${API}/users/staff`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.detail || "Could not create request");
+        showError(data.detail || "Could not load staff");
         return;
       }
 
-      alert("Service request created successfully!");
+      setStaffList(data);
+    } catch (error) {
+      showError("Could not connect to backend");
+    }
+  };
+
+  // =========================
+  // LOAD USERS
+  // =========================
+
+  const loadUsers = async () => {
+    const token = getToken();
+
+    if (!token) return;
+
+    try {
+      const response = await fetch(`${API}/users/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showError(data.detail || "Could not load users");
+        return;
+      }
+
+      setUsers(data);
+    } catch (error) {
+      showError("Could not connect to backend");
+    }
+  };
+
+  // =========================
+  // INITIAL ROLE DATA
+  // =========================
+
+  useEffect(() => {
+    if (!user) return;
+
+    setActivePage("dashboard");
+
+    if (
+      user.role === "student" ||
+      user.role === "faculty" ||
+      user.role === "service_staff" ||
+      user.role === "service_lead"
+    ) {
+      loadRequests();
+    }
+
+    if (user.role === "service_lead") {
+      loadStaff();
+    }
+
+    if (user.role === "admin") {
+      loadUsers();
+    }
+  }, [user]);
+
+  // =========================
+  // CREATE REQUEST
+  // =========================
+
+  const createRequest = async (e) => {
+    e.preventDefault();
+
+    const token = getToken();
+
+    try {
+      const response = await fetch(`${API}/service-requests/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          category_id: categoryId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showError(data.detail || "Could not create request");
+        return;
+      }
+
+      alert("Service request created successfully.");
 
       setTitle("");
       setDescription("");
@@ -197,20 +326,20 @@ function App() {
 
       loadRequests();
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
     }
   };
 
-  // =========================================================
+  // =========================
   // UPDATE STATUS
-  // =========================================================
+  // =========================
 
   const updateStatus = async (requestId, newStatus) => {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/service-requests/${requestId}/status`,
+        `${API}/service-requests/${requestId}/status`,
         {
           method: "PATCH",
           headers: {
@@ -226,33 +355,43 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.detail || "Could not update status");
+        showError(data.detail || "Could not update status");
         return;
       }
 
       loadRequests();
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
     }
   };
 
-  // =========================================================
-  // ASSIGN / REASSIGN REQUEST
-  // =========================================================
+  // =========================
+  // STAFF SELECTION
+  // =========================
+
+  const handleStaffChange = (requestId, value) => {
+    setStaffIds((previous) => ({
+      ...previous,
+      [requestId]: value,
+    }));
+  };
+
+  // =========================
+  // ASSIGN REQUEST
+  // =========================
 
   const assignRequest = async (requestId) => {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
+    const selectedStaffId = staffIds[requestId];
 
-    const staffId = staffIds[requestId] || "";
-
-    if (!staffId.trim()) {
-      alert("Enter staff ID");
+    if (!selectedStaffId) {
+      showError("Please select a staff member.");
       return;
     }
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/service-requests/${requestId}/assign`,
+        `${API}/service-requests/${requestId}/assign`,
         {
           method: "PATCH",
           headers: {
@@ -260,7 +399,7 @@ function App() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            assigned_to: staffId.trim(),
+            assigned_to: selectedStaffId,
           }),
         }
       );
@@ -268,88 +407,70 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.detail || "Could not assign request");
+        showError(data.detail || "Could not assign request");
         return;
       }
 
-      alert("Request assigned successfully!");
+      alert("Request assigned successfully.");
 
-      setStaffIds((prev) => ({
-        ...prev,
+      setStaffIds((previous) => ({
+        ...previous,
         [requestId]: "",
       }));
 
       loadRequests();
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
     }
   };
 
-  // =========================================================
-  // ADMIN - LOAD USERS
-  // =========================================================
+  // =========================
+  // CREATE USER
+  // =========================
 
-  const loadAdminUsers = async () => {
-    const token = localStorage.getItem("access_token");
+  const createUser = async (e) => {
+    e.preventDefault();
+
+    const token = getToken();
 
     try {
-      const response = await fetch(
-        "http://127.0.0.1:8000/users/",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`${API}/users/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.detail || "Could not load users");
+        showError(data.detail || "Could not create user");
         return;
       }
 
-      setAdminUsers(data);
-      setAdminPage("users");
+      alert("User created successfully.");
+
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("");
+      setNewUserRole("student");
+
+      loadUsers();
     } catch (error) {
-      alert("Could not connect to backend");
+      showError("Could not connect to backend");
     }
   };
 
-  // =========================================================
-  // ADMIN - LOAD CATEGORIES
-  // =========================================================
-
-  const loadAdminCategories = async () => {
-    const token = localStorage.getItem("access_token");
-
-    try {
-      const response = await fetch(
-        "http://127.0.0.1:8000/categories/",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.detail || "Could not load categories");
-        return;
-      }
-
-      setAdminCategories(data);
-      setAdminPage("categories");
-    } catch (error) {
-      alert("Could not connect to backend");
-    }
-  };
-
-  // =========================================================
+  // =========================
   // LOGOUT
-  // =========================================================
+  // =========================
 
   const handleLogout = () => {
     localStorage.removeItem("access_token");
@@ -357,25 +478,32 @@ function App() {
     setUser(null);
     setEmail("");
     setPassword("");
+
     setRequests([]);
+    setStaffList([]);
+    setUsers([]);
+    setStaffIds({});
+
     setTitle("");
     setDescription("");
     setCategoryId("cat001");
-    setStaffIds({});
-    setAdminPage("dashboard");
-    setAdminUsers([]);
-    setAdminCategories([]);
+
+    setActivePage("dashboard");
   };
 
-  // =========================================================
+  // =========================
   // LOGIN SCREEN
-  // =========================================================
+  // =========================
 
   if (!user) {
     return (
       <div className="login-page">
-        <div className="login-card">
+        <div className="login-background">
+          <div className="login-glow glow-one"></div>
+          <div className="login-glow glow-two"></div>
+        </div>
 
+        <div className="login-card">
           <div className="login-brand">
             <div className="brand-icon">CS</div>
 
@@ -386,12 +514,14 @@ function App() {
           </div>
 
           <div className="login-heading">
+            <span className="eyebrow">SECURE ACCESS</span>
             <h2>Welcome back</h2>
-            <p>Sign in to access your service dashboard.</p>
+            <p>
+              Sign in to manage your college service requests.
+            </p>
           </div>
 
           <form onSubmit={handleLogin} className="login-form">
-
             <div className="form-group">
               <label>Email Address</label>
 
@@ -419,131 +549,213 @@ function App() {
             <button
               type="submit"
               className="primary-button full-width"
+              disabled={loading}
             >
-              Sign In
+              {loading ? "Signing in..." : "Sign In"}
             </button>
-
           </form>
 
           <div className="login-footer">
+            <span className="footer-dot"></span>
             College Service Request System
           </div>
-
         </div>
       </div>
     );
   }
 
-  // =========================================================
-  // MAIN APPLICATION
-  // =========================================================
+  // =========================
+  // COUNTS
+  // =========================
+
+  const totalRequests = requests.length;
+
+  const openRequests = requests.filter(
+    (request) =>
+      request.status !== "resolved" &&
+      request.status !== "closed"
+  ).length;
+
+  const completedRequests = requests.filter(
+    (request) =>
+      request.status === "resolved" ||
+      request.status === "closed"
+  ).length;
+
+  const assignedRequests = requests.filter(
+    (request) =>
+      request.assigned_to &&
+      request.assigned_to !== "unassigned"
+  ).length;
+
+  const staffCount = users.filter(
+    (item) => item.role === "service_staff"
+  ).length;
+
+  // =========================
+  // DASHBOARD
+  // =========================
 
   return (
     <div className="app-layout">
 
-      {/* =====================================================
-          SIDEBAR
-      ===================================================== */}
+      {/* SIDEBAR */}
 
       <aside className="sidebar">
 
         <div className="sidebar-brand">
+          <div className="brand-icon small">CS</div>
 
-          <div className="brand-icon small">
-            CS
-          </div>
-
-          <div>
+          <div className="brand-text">
             <h2>College Service</h2>
             <span>Request System</span>
           </div>
-
         </div>
 
         <div className="sidebar-divider"></div>
 
-        <nav className="sidebar-nav">
+        <div className="sidebar-section-title">
+          WORKSPACE
+        </div>
 
-          {/* DASHBOARD */}
+        <nav className="sidebar-nav">
 
           <div
             className={`nav-item ${
-              user.role === "admin" &&
-              adminPage !== "dashboard"
-                ? ""
-                : "active"
+              activePage === "dashboard" ? "active" : ""
             }`}
-            onClick={() => {
-              if (user.role === "admin") {
-                setAdminPage("dashboard");
-              }
-            }}
-            style={{
-              cursor:
-                user.role === "admin"
-                  ? "pointer"
-                  : "default",
-            }}
+            onClick={() => navigateTo("dashboard")}
           >
             <span className="nav-icon">⌂</span>
-            Dashboard
+            <span>Dashboard</span>
           </div>
-
-
-          {/* STUDENT / FACULTY */}
 
           {(user.role === "student" ||
             user.role === "faculty") && (
-            <div className="nav-item">
-              <span className="nav-icon">▣</span>
-              My Requests
-            </div>
+            <>
+              <div
+                className={`nav-item ${
+                  activePage === "my-requests" ? "active" : ""
+                }`}
+                onClick={() => navigateTo("my-requests")}
+              >
+                <span className="nav-icon">▣</span>
+                <span>My Requests</span>
+              </div>
+
+              <div
+                className={`nav-item ${
+                  activePage === "create-request"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() => navigateTo("create-request")}
+              >
+                <span className="nav-icon">＋</span>
+                <span>Create Request</span>
+              </div>
+            </>
           )}
-
-
-          {/* SERVICE STAFF */}
 
           {user.role === "service_staff" && (
-            <div className="nav-item">
-              <span className="nav-icon">✓</span>
-              Assigned Requests
-            </div>
-          )}
-
-
-          {/* SERVICE LEAD */}
-
-          {user.role === "service_lead" && (
-            <div className="nav-item">
-              <span className="nav-icon">≡</span>
-              All Requests
-            </div>
-          )}
-
-
-          {/* ADMIN */}
-
-          {user.role === "admin" && (
             <div
               className={`nav-item ${
-                adminPage !== "dashboard"
+                activePage === "assigned-requests"
                   ? "active"
                   : ""
               }`}
-              onClick={() => setAdminPage("users")}
-              style={{ cursor: "pointer" }}
+              onClick={() =>
+                navigateTo("assigned-requests")
+              }
             >
-              <span className="nav-icon">⚙</span>
-              Administration
+              <span className="nav-icon">✓</span>
+              <span>Assigned Requests</span>
             </div>
+          )}
+
+          {user.role === "service_lead" && (
+            <>
+              <div
+                className={`nav-item ${
+                  activePage === "all-requests"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigateTo("all-requests")
+                }
+              >
+                <span className="nav-icon">≡</span>
+                <span>All Requests</span>
+              </div>
+
+              <div
+                className={`nav-item ${
+                  activePage === "staff-directory"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigateTo("staff-directory")
+                }
+              >
+                <span className="nav-icon">◉</span>
+                <span>Staff Directory</span>
+              </div>
+            </>
+          )}
+
+          {user.role === "admin" && (
+            <>
+              <div
+                className={`nav-item ${
+                  activePage === "administration"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigateTo("administration")
+                }
+              >
+                <span className="nav-icon">⚙</span>
+                <span>Administration</span>
+              </div>
+
+              <div
+                className={`nav-item ${
+                  activePage === "user-management"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigateTo("user-management")
+                }
+              >
+                <span className="nav-icon">♙</span>
+                <span>User Management</span>
+              </div>
+
+              <div
+                className={`nav-item ${
+                  activePage === "system-overview"
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigateTo("system-overview")
+                }
+              >
+                <span className="nav-icon">▤</span>
+                <span>System Overview</span>
+              </div>
+            </>
           )}
 
         </nav>
 
         <div className="sidebar-bottom">
 
-          <div className="user-mini">
-
+          <div className="sidebar-profile">
             <div className="avatar">
               {user.name?.charAt(0).toUpperCase()}
             </div>
@@ -552,7 +764,6 @@ function App() {
               <strong>{user.name}</strong>
               <span>{roleNames[user.role]}</span>
             </div>
-
           </div>
 
           <button
@@ -567,36 +778,27 @@ function App() {
 
       </aside>
 
+      {/* MAIN */}
 
-      {/* =====================================================
-          MAIN CONTENT
-      ===================================================== */}
+      <main
+        className="main-content"
+        id="dashboard"
+      >
 
-      <main className="main-content">
+        {/* TOPBAR */}
 
         <header className="topbar">
 
-          <div>
-
-            <p className="topbar-label">
-              {user.role === "admin" && adminPage === "users"
-                ? "Administration"
-                : user.role === "admin" &&
-                  adminPage === "categories"
-                ? "Administration"
-                : "Dashboard"}
-            </p>
+          <div className="topbar-left">
+            <p className="topbar-label">Dashboard</p>
 
             <h1>
-              {user.role === "admin" &&
-              adminPage === "users"
-                ? "User Management"
-                : user.role === "admin" &&
-                  adminPage === "categories"
-                ? "Service Categories"
-                : `Welcome back, ${user.name}`}
+              Welcome back, {user.name}
             </h1>
 
+            <p className="topbar-subtitle">
+              Here's what's happening in your service workspace.
+            </p>
           </div>
 
           <div className="topbar-user">
@@ -614,82 +816,50 @@ function App() {
 
         </header>
 
+        {/* =====================================
+            STUDENT / FACULTY
+        ===================================== */}
 
-        {/* ===================================================
-            STUDENT
-        =================================================== */}
-
-        {user.role === "student" && (
+        {(user.role === "student" ||
+          user.role === "faculty") && (
           <>
-
             <section className="stats-grid">
 
-              <div className="stat-card">
-                <div className="stat-icon blue">▣</div>
+              <StatCard
+                icon="▣"
+                label="Total Requests"
+                value={totalRequests}
+                variant="blue"
+              />
 
-                <div>
-                  <span>Total Requests</span>
-                  <strong>{requests.length}</strong>
-                </div>
-              </div>
+              <StatCard
+                icon="◷"
+                label="Open Requests"
+                value={openRequests}
+                variant="orange"
+              />
 
-
-              <div className="stat-card">
-                <div className="stat-icon orange">◷</div>
-
-                <div>
-                  <span>Open Requests</span>
-
-                  <strong>
-                    {
-                      requests.filter(
-                        (r) =>
-                          r.status !== "closed" &&
-                          r.status !== "resolved"
-                      ).length
-                    }
-                  </strong>
-                </div>
-              </div>
-
-
-              <div className="stat-card">
-                <div className="stat-icon green">✓</div>
-
-                <div>
-                  <span>Completed</span>
-
-                  <strong>
-                    {
-                      requests.filter(
-                        (r) =>
-                          r.status === "resolved" ||
-                          r.status === "closed"
-                      ).length
-                    }
-                  </strong>
-                </div>
-              </div>
+              <StatCard
+                icon="✓"
+                label="Completed"
+                value={completedRequests}
+                variant="green"
+              />
 
             </section>
 
-
-            <section className="content-grid">
+            <section
+              className="content-grid"
+              id="create-request"
+            >
 
               <div className="panel">
 
-                <div className="panel-header">
-
-                  <div>
-                    <h2>Create Service Request</h2>
-
-                    <p>
-                      Submit a new request to the service office.
-                    </p>
-                  </div>
-
-                </div>
-
+                <PanelHeader
+                  eyebrow="NEW REQUEST"
+                  title="Create Service Request"
+                  description="Submit a new request to the college service office."
+                />
 
                 <form
                   onSubmit={createRequest}
@@ -697,40 +867,33 @@ function App() {
                 >
 
                   <div className="form-group">
-
                     <label>Request Title</label>
 
                     <input
                       type="text"
-                      placeholder="Enter request title"
+                      placeholder="Example: Need Bonafide Certificate"
                       value={title}
                       onChange={(e) =>
                         setTitle(e.target.value)
                       }
                       required
                     />
-
                   </div>
 
-
                   <div className="form-group">
-
                     <label>Description</label>
 
                     <textarea
-                      placeholder="Describe your request"
+                      placeholder="Describe your request clearly..."
                       value={description}
                       onChange={(e) =>
                         setDescription(e.target.value)
                       }
                       required
                     />
-
                   </div>
 
-
                   <div className="form-group">
-
                     <label>Service Category</label>
 
                     <select
@@ -739,971 +902,757 @@ function App() {
                         setCategoryId(e.target.value)
                       }
                     >
-
-                      <option value="cat001">
-                        Bonafide Certificate
-                      </option>
-
-                      <option value="cat002">
-                        ID Card
-                      </option>
-
-                      <option value="cat003">
-                        Hostel
-                      </option>
-
-                      <option value="cat004">
-                        Transport
-                      </option>
-
-                      <option value="cat005">
-                        Library
-                      </option>
-
-                      <option value="cat006">
-                        IT Support
-                      </option>
-
+                      {Object.entries(categoryNames).map(
+                        ([id, name]) => (
+                          <option key={id} value={id}>
+                            {name}
+                          </option>
+                        )
+                      )}
                     </select>
-
                   </div>
-
 
                   <button
                     type="submit"
                     className="primary-button"
                   >
-                    Create Request
+                    Submit Request
                   </button>
 
                 </form>
 
               </div>
 
-            </section>
+              <div
+                className="panel"
+                id="my-requests"
+              >
 
-
-            <section className="panel requests-panel">
-
-              <div className="panel-header">
-
-                <div>
-                  <h2>My Service Requests</h2>
-
-                  <p>
-                    Track the status of your submitted requests.
-                  </p>
-                </div>
-
-                <button
-                  onClick={loadRequests}
-                  className="secondary-button"
-                >
-                  Refresh Requests
-                </button>
-
-              </div>
-
-
-              <RequestList
-                requests={requests}
-                categoryNames={categoryNames}
-                statusLabels={statusLabels}
-                getStatusClass={getStatusClass}
-              />
-
-            </section>
-
-          </>
-        )}
-
-
-        {/* ===================================================
-            FACULTY
-        =================================================== */}
-
-        {user.role === "faculty" && (
-          <>
-
-            <section className="stats-grid">
-
-              <div className="stat-card">
-                <div className="stat-icon blue">▣</div>
-
-                <div>
-                  <span>Total Requests</span>
-                  <strong>{requests.length}</strong>
-                </div>
-              </div>
-
-
-              <div className="stat-card">
-                <div className="stat-icon orange">◷</div>
-
-                <div>
-                  <span>Open Requests</span>
-
-                  <strong>
-                    {
-                      requests.filter(
-                        (r) =>
-                          r.status !== "closed" &&
-                          r.status !== "resolved"
-                      ).length
-                    }
-                  </strong>
-                </div>
-              </div>
-
-
-              <div className="stat-card">
-                <div className="stat-icon green">✓</div>
-
-                <div>
-                  <span>Completed</span>
-
-                  <strong>
-                    {
-                      requests.filter(
-                        (r) =>
-                          r.status === "resolved" ||
-                          r.status === "closed"
-                      ).length
-                    }
-                  </strong>
-                </div>
-              </div>
-
-            </section>
-
-
-            <section className="content-grid">
-
-              <div className="panel">
-
-                <div className="panel-header">
-
-                  <div>
-                    <h2>Create Service Request</h2>
-
-                    <p>
-                      Submit a new request to the service office.
-                    </p>
-                  </div>
-
-                </div>
-
-
-                <form
-                  onSubmit={createRequest}
-                  className="request-form"
-                >
-
-                  <div className="form-group">
-
-                    <label>Request Title</label>
-
-                    <input
-                      type="text"
-                      placeholder="Enter request title"
-                      value={title}
-                      onChange={(e) =>
-                        setTitle(e.target.value)
-                      }
-                      required
-                    />
-
-                  </div>
-
-
-                  <div className="form-group">
-
-                    <label>Description</label>
-
-                    <textarea
-                      placeholder="Describe your request"
-                      value={description}
-                      onChange={(e) =>
-                        setDescription(e.target.value)
-                      }
-                      required
-                    />
-
-                  </div>
-
-
-                  <div className="form-group">
-
-                    <label>Service Category</label>
-
-                    <select
-                      value={categoryId}
-                      onChange={(e) =>
-                        setCategoryId(e.target.value)
-                      }
+                <PanelHeader
+                  eyebrow="ACTIVITY"
+                  title="My Requests"
+                  description="Track the status of your submitted requests."
+                  action={
+                    <button
+                      className="secondary-button"
+                      onClick={loadRequests}
                     >
+                      Refresh
+                    </button>
+                  }
+                />
 
-                      <option value="cat001">
-                        Bonafide Certificate
-                      </option>
-
-                      <option value="cat002">
-                        ID Card
-                      </option>
-
-                      <option value="cat003">
-                        Hostel
-                      </option>
-
-                      <option value="cat004">
-                        Transport
-                      </option>
-
-                      <option value="cat005">
-                        Library
-                      </option>
-
-                      <option value="cat006">
-                        IT Support
-                      </option>
-
-                    </select>
-
-                  </div>
-
-
-                  <button
-                    type="submit"
-                    className="primary-button"
-                  >
-                    Create Request
-                  </button>
-
-                </form>
+                <RequestList
+                  requests={requests}
+                  categoryNames={categoryNames}
+                  statusLabels={statusLabels}
+                  getStatusClass={getStatusClass}
+                />
 
               </div>
 
             </section>
-
-
-            <section className="panel requests-panel">
-
-              <div className="panel-header">
-
-                <div>
-                  <h2>My Service Requests</h2>
-
-                  <p>
-                    Track the status of your submitted requests.
-                  </p>
-                </div>
-
-                <button
-                  onClick={loadRequests}
-                  className="secondary-button"
-                >
-                  Refresh Requests
-                </button>
-
-              </div>
-
-
-              <RequestList
-                requests={requests}
-                categoryNames={categoryNames}
-                statusLabels={statusLabels}
-                getStatusClass={getStatusClass}
-              />
-
-            </section>
-
           </>
         )}
 
-
-        {/* ===================================================
+        {/* =====================================
             SERVICE STAFF
-        =================================================== */}
+        ===================================== */}
 
         {user.role === "service_staff" && (
           <>
+            <section className="stats-grid">
 
-            <section className="page-intro">
+              <StatCard
+                icon="▣"
+                label="Assigned Requests"
+                value={totalRequests}
+                variant="blue"
+              />
 
-              <div>
+              <StatCard
+                icon="◷"
+                label="In Progress"
+                value={
+                  requests.filter(
+                    (r) => r.status === "in_progress"
+                  ).length
+                }
+                variant="orange"
+              />
 
-                <h2>Assigned Requests</h2>
-
-                <p>
-                  View and process service requests assigned to you.
-                </p>
-
-              </div>
-
-              <button
-                onClick={loadRequests}
-                className="primary-button"
-              >
-                Refresh Requests
-              </button>
+              <StatCard
+                icon="✓"
+                label="Resolved"
+                value={completedRequests}
+                variant="green"
+              />
 
             </section>
 
+            <section
+              className="panel full-panel"
+              id="assigned-requests"
+            >
 
-            <section className="request-list">
+              <PanelHeader
+                eyebrow="SERVICE WORKSPACE"
+                title="Assigned Requests"
+                description="Process the service requests assigned to you."
+                action={
+                  <button
+                    className="secondary-button"
+                    onClick={loadRequests}
+                  >
+                    Refresh
+                  </button>
+                }
+              />
 
               {requests.length === 0 ? (
-
-                <EmptyState
-                  message="No assigned requests found."
-                />
-
+                <EmptyState message="No requests are currently assigned to you." />
               ) : (
+                <div className="request-list">
 
-                requests.map((request) => (
+                  {requests.map((request) => (
+                    <div
+                      className="request-card"
+                      key={request.id}
+                    >
 
-                  <div
-                    className="request-card"
-                    key={request.id}
-                  >
+                      <div className="request-card-top">
 
-                    <div className="request-card-top">
+                        <div>
+                          <span className="request-category">
+                            {categoryNames[
+                              request.category_id
+                            ] || request.category_id}
+                          </span>
 
-                      <div>
+                          <h3>{request.title}</h3>
+                        </div>
 
-                        <span className="request-category">
-                          {categoryNames[request.category_id] ||
-                            request.category_id}
+                        <span
+                          className={getStatusClass(
+                            request.status
+                          )}
+                        >
+                          {statusLabels[
+                            request.status
+                          ] || request.status}
                         </span>
-
-                        <h3>{request.title}</h3>
 
                       </div>
 
-                      <span
-                        className={getStatusClass(
-                          request.status
-                        )}
-                      >
-                        {statusLabels[request.status] ||
-                          request.status}
-                      </span>
+                      <p className="request-description">
+                        {request.description}
+                      </p>
 
-                    </div>
+                      <div className="request-meta">
+                        <div>
+                          <span>Request ID</span>
+                          <strong>{request.id}</strong>
+                        </div>
 
+                        <div>
+                          <span>Assigned To</span>
+                          <strong>
+                            {request.assigned_to ||
+                              "Not assigned"}
+                          </strong>
+                        </div>
+                      </div>
 
-                    <p className="request-description">
-                      {request.description}
-                    </p>
+                      <div className="request-actions">
 
-
-                    <div className="request-actions">
-
-                      {request.status === "assigned" && (
-                        <button
-                          className="primary-button"
-                          onClick={() =>
-                            updateStatus(
-                              request.id,
-                              "in_progress"
-                            )
-                          }
-                        >
-                          Start Processing
-                        </button>
-                      )}
-
-
-                      {request.status === "in_progress" && (
-                        <>
-
+                        {request.status === "assigned" && (
                           <button
-                            className="warning-button"
+                            className="primary-button"
                             onClick={() =>
                               updateStatus(
                                 request.id,
-                                "on_hold"
+                                "in_progress"
                               )
                             }
                           >
-                            Put On Hold
+                            Start Processing
                           </button>
+                        )}
 
+                        {request.status === "in_progress" && (
+                          <>
+                            <button
+                              className="warning-button"
+                              onClick={() =>
+                                updateStatus(
+                                  request.id,
+                                  "on_hold"
+                                )
+                              }
+                            >
+                              Put On Hold
+                            </button>
 
+                            <button
+                              className="success-button"
+                              onClick={() =>
+                                updateStatus(
+                                  request.id,
+                                  "resolved"
+                                )
+                              }
+                            >
+                              Resolve
+                            </button>
+                          </>
+                        )}
+
+                        {request.status === "on_hold" && (
+                          <button
+                            className="primary-button"
+                            onClick={() =>
+                              updateStatus(
+                                request.id,
+                                "in_progress"
+                              )
+                            }
+                          >
+                            Resume
+                          </button>
+                        )}
+
+                        {request.status === "resolved" && (
                           <button
                             className="success-button"
                             onClick={() =>
                               updateStatus(
                                 request.id,
-                                "resolved"
+                                "closed"
                               )
                             }
                           >
-                            Resolve
+                            Close Request
                           </button>
+                        )}
 
-                        </>
-                      )}
+                        {request.status === "closed" && (
+                          <span className="completed-text">
+                            ✓ Request completed
+                          </span>
+                        )}
 
-
-                      {request.status === "on_hold" && (
-                        <button
-                          className="primary-button"
-                          onClick={() =>
-                            updateStatus(
-                              request.id,
-                              "in_progress"
-                            )
-                          }
-                        >
-                          Resume
-                        </button>
-                      )}
-
-
-                      {request.status === "resolved" && (
-                        <button
-                          className="success-button"
-                          onClick={() =>
-                            updateStatus(
-                              request.id,
-                              "closed"
-                            )
-                          }
-                        >
-                          Close Request
-                        </button>
-                      )}
-
-
-                      {request.status === "closed" && (
-                        <span className="completed-text">
-                          ✓ Request completed
-                        </span>
-                      )}
+                      </div>
 
                     </div>
+                  ))}
 
-                  </div>
-
-                ))
-
+                </div>
               )}
 
             </section>
-
           </>
         )}
 
-
-        {/* ===================================================
+        {/* =====================================
             SERVICE LEAD
-        =================================================== */}
+        ===================================== */}
 
         {user.role === "service_lead" && (
           <>
+            <section className="stats-grid">
 
-            <section className="page-intro">
+              <StatCard
+                icon="▣"
+                label="Total Requests"
+                value={totalRequests}
+                variant="blue"
+              />
 
-              <div>
+              <StatCard
+                icon="◉"
+                label="Assigned"
+                value={assignedRequests}
+                variant="purple"
+              />
 
-                <h2>Service Requests</h2>
+              <StatCard
+                icon="◷"
+                label="Pending"
+                value={
+                  requests.filter(
+                    (r) =>
+                      r.status === "new" ||
+                      r.status === "assigned"
+                  ).length
+                }
+                variant="orange"
+              />
 
-                <p>
-                  Monitor requests and assign them to service staff.
-                </p>
-
-              </div>
-
-              <button
-                onClick={loadRequests}
-                className="primary-button"
-              >
-                Refresh Requests
-              </button>
+              <StatCard
+                icon="✓"
+                label="Completed"
+                value={completedRequests}
+                variant="green"
+              />
 
             </section>
 
+            {/* STAFF DIRECTORY */}
 
-            <section className="request-list">
+            <section
+              className="panel"
+              id="staff-directory"
+            >
 
-              {requests.length === 0 ? (
-
-                <EmptyState
-                  message="No service requests found."
-                />
-
-              ) : (
-
-                requests.map((request) => (
-
-                  <div
-                    className="request-card"
-                    key={request.id}
+              <PanelHeader
+                eyebrow="TEAM"
+                title="Staff Directory"
+                description="View available service staff before assigning requests."
+                action={
+                  <button
+                    className="secondary-button"
+                    onClick={loadStaff}
                   >
+                    Refresh Staff
+                  </button>
+                }
+              />
 
-                    <div className="request-card-top">
+              {staffList.length === 0 ? (
+                <EmptyState message="No service staff found." />
+              ) : (
+                <div className="staff-grid">
 
-                      <div>
+                  {staffList.map((staff) => (
+                    <div
+                      className="staff-card"
+                      key={staff.id}
+                    >
 
-                        <span className="request-category">
-                          {categoryNames[request.category_id] ||
-                            request.category_id}
-                        </span>
-
-                        <h3>{request.title}</h3>
-
+                      <div className="staff-avatar">
+                        {staff.name
+                          ?.charAt(0)
+                          .toUpperCase()}
                       </div>
 
-                      <span
-                        className={getStatusClass(
-                          request.status
-                        )}
-                      >
-                        {statusLabels[request.status] ||
-                          request.status}
-                      </span>
+                      <div className="staff-details">
+                        <h3>{staff.name}</h3>
+
+                        <span className="staff-role">
+                          Service Staff
+                        </span>
+
+                        <p>
+                          <strong>ID:</strong>{" "}
+                          {staff.id}
+                        </p>
+
+                        <p>
+                          <strong>Email:</strong>{" "}
+                          {staff.email}
+                        </p>
+                      </div>
 
                     </div>
+                  ))}
 
-
-                    <p className="request-description">
-                      {request.description}
-                    </p>
-
-
-                    <div className="assignment-info">
-
-                      <span>Assigned Staff</span>
-
-                      <strong>
-                        {request.assigned_to ||
-                          "Not Assigned"}
-                      </strong>
-
-                    </div>
-
-
-                    <div className="assignment-area">
-
-                      <input
-                        type="text"
-                        placeholder="Enter staff ID e.g. staff001"
-                        value={staffIds[request.id] || ""}
-                        onChange={(e) =>
-                          setStaffIds((prev) => ({
-                            ...prev,
-                            [request.id]: e.target.value,
-                          }))
-                        }
-                      />
-
-
-                      <button
-                        className="primary-button"
-                        onClick={() =>
-                          assignRequest(request.id)
-                        }
-                      >
-                        Assign / Reassign
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                ))
-
+                </div>
               )}
 
             </section>
 
+            {/* SERVICE REQUESTS */}
+
+            <section
+              className="panel"
+              id="all-requests"
+            >
+
+              <PanelHeader
+                eyebrow="OPERATIONS"
+                title="Service Requests"
+                description="Monitor requests and assign them to the appropriate staff member."
+                action={
+                  <button
+                    className="secondary-button"
+                    onClick={loadRequests}
+                  >
+                    Refresh Requests
+                  </button>
+                }
+              />
+
+              {requests.length === 0 ? (
+                <EmptyState message="No service requests found." />
+              ) : (
+                <div className="request-list">
+
+                  {requests.map((request) => (
+                    <div
+                      className="request-card lead-request"
+                      key={request.id}
+                    >
+
+                      <div className="request-card-top">
+
+                        <div>
+                          <span className="request-category">
+                            {categoryNames[
+                              request.category_id
+                            ] || request.category_id}
+                          </span>
+
+                          <h3>{request.title}</h3>
+                        </div>
+
+                        <span
+                          className={getStatusClass(
+                            request.status
+                          )}
+                        >
+                          {statusLabels[
+                            request.status
+                          ] || request.status}
+                        </span>
+
+                      </div>
+
+                      <p className="request-description">
+                        {request.description}
+                      </p>
+
+                      <div className="assignment-current">
+                        <span>Current Assignment</span>
+
+                        <strong>
+                          {request.assigned_to &&
+                          request.assigned_to !==
+                            "unassigned"
+                            ? request.assigned_to
+                            : "Not Assigned"}
+                        </strong>
+                      </div>
+
+                      <div className="assignment-area">
+
+                        <div className="form-group compact">
+                          <label>
+                            Assign to Staff
+                          </label>
+
+                          <select
+                            value={
+                              staffIds[request.id] || ""
+                            }
+                            onChange={(e) =>
+                              handleStaffChange(
+                                request.id,
+                                e.target.value
+                              )
+                            }
+                          >
+                            <option value="">
+                              Select Staff Member
+                            </option>
+
+                            {staffList.map((staff) => (
+                              <option
+                                key={staff.id}
+                                value={staff.id}
+                              >
+                                {staff.name} — {staff.id}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          className="primary-button"
+                          onClick={() =>
+                            assignRequest(request.id)
+                          }
+                        >
+                          Assign / Reassign
+                        </button>
+
+                      </div>
+
+                    </div>
+                  ))}
+
+                </div>
+              )}
+
+            </section>
           </>
         )}
 
-
-        {/* ===================================================
+        {/* =====================================
             ADMIN
-        =================================================== */}
+        ===================================== */}
 
         {user.role === "admin" && (
           <>
+            <section className="stats-grid">
 
-            {/* =================================================
-                ADMIN DASHBOARD
-            ================================================= */}
+              <StatCard
+                icon="♙"
+                label="System Users"
+                value={users.length}
+                variant="blue"
+              />
 
-            {adminPage === "dashboard" && (
-              <>
+              <StatCard
+                icon="◉"
+                label="Service Staff"
+                value={staffCount}
+                variant="purple"
+              />
 
-                <section className="stats-grid">
+              <StatCard
+                icon="▤"
+                label="Service Categories"
+                value={6}
+                variant="orange"
+              />
 
-                  <div className="stat-card">
+              <StatCard
+                icon="✓"
+                label="System Status"
+                value="Active"
+                variant="green"
+              />
 
-                    <div className="stat-icon blue">
-                      U
-                    </div>
+            </section>
 
-                    <div>
-                      <span>System Users</span>
-                      <strong>5</strong>
-                    </div>
+            <section
+              className="admin-layout"
+              id="administration"
+            >
 
+              {/* CREATE USER */}
+
+              <div className="panel admin-create-panel">
+
+                <PanelHeader
+                  eyebrow="ADMINISTRATION"
+                  title="Create User"
+                  description="Add a new account to the college service system."
+                />
+
+                <form
+                  onSubmit={createUser}
+                  className="admin-user-form"
+                >
+
+                  <div className="form-group">
+                    <label>Full Name</label>
+
+                    <input
+                      type="text"
+                      placeholder="Enter full name"
+                      value={newUserName}
+                      onChange={(e) =>
+                        setNewUserName(e.target.value)
+                      }
+                      required
+                    />
                   </div>
 
+                  <div className="form-group">
+                    <label>Email Address</label>
 
-                  <div className="stat-card">
-
-                    <div className="stat-icon purple">
-                      S
-                    </div>
-
-                    <div>
-                      <span>Service Categories</span>
-                      <strong>6</strong>
-                    </div>
-
+                    <input
+                      type="email"
+                      placeholder="Enter email address"
+                      value={newUserEmail}
+                      onChange={(e) =>
+                        setNewUserEmail(e.target.value)
+                      }
+                      required
+                    />
                   </div>
 
+                  <div className="form-group">
+                    <label>Password</label>
 
-                  <div className="stat-card">
-
-                    <div className="stat-icon green">
-                      ✓
-                    </div>
-
-                    <div>
-                      <span>System Status</span>
-                      <strong>Active</strong>
-                    </div>
-
+                    <input
+                      type="password"
+                      placeholder="Create password"
+                      value={newUserPassword}
+                      onChange={(e) =>
+                        setNewUserPassword(
+                          e.target.value
+                        )
+                      }
+                      required
+                    />
                   </div>
 
-                </section>
+                  <div className="form-group">
+                    <label>Role</label>
 
+                    <select
+                      value={newUserRole}
+                      onChange={(e) =>
+                        setNewUserRole(e.target.value)
+                      }
+                    >
+                      <option value="student">
+                        Student
+                      </option>
 
-                <section className="admin-grid">
+                      <option value="faculty">
+                        Faculty
+                      </option>
 
-                  {/* USER MANAGEMENT */}
+                      <option value="service_staff">
+                        Service Staff
+                      </option>
 
-                  <div
-                    className="panel"
-                    onClick={loadAdminUsers}
-                    style={{ cursor: "pointer" }}
-                  >
+                      <option value="service_lead">
+                        Service Lead
+                      </option>
 
-                    <div className="admin-icon blue-bg">
-                      U
-                    </div>
-
-                    <h2>User Management</h2>
-
-                    <p>
-                      Manage student, faculty, service staff,
-                      service lead, and administrator accounts.
-                    </p>
-
-                    <div className="feature-label">
-                      Open Management →
-                    </div>
-
+                      <option value="admin">
+                        Administrator
+                      </option>
+                    </select>
                   </div>
-
-
-                  {/* SERVICE CATEGORIES */}
-
-                  <div
-                    className="panel"
-                    onClick={loadAdminCategories}
-                    style={{ cursor: "pointer" }}
-                  >
-
-                    <div className="admin-icon purple-bg">
-                      S
-                    </div>
-
-                    <h2>Service Categories</h2>
-
-                    <p>
-                      View and manage the service categories
-                      available in the college service system.
-                    </p>
-
-                    <div className="feature-label">
-                      Open Management →
-                    </div>
-
-                  </div>
-
-
-                  {/* SYSTEM CONFIGURATION
-                      NOT CLICKABLE */}
-
-                  <div className="panel">
-
-                    <div className="admin-icon green-bg">
-                      ⚙
-                    </div>
-
-                    <h2>System Configuration</h2>
-
-                    <p>
-                      Administrative configuration for the
-                      college service request system.
-                    </p>
-
-                    <div className="feature-label">
-                      System Active
-                    </div>
-
-                  </div>
-
-                </section>
-
-              </>
-            )}
-
-
-            {/* =================================================
-                USER MANAGEMENT
-            ================================================= */}
-
-            {adminPage === "users" && (
-              <>
-
-                <section className="page-intro">
-
-                  <div>
-
-                    <h2>User Management</h2>
-
-                    <p>
-                      View all users registered in the college
-                      service request system.
-                    </p>
-
-                  </div>
-
 
                   <button
+                    type="submit"
+                    className="primary-button full-width"
+                  >
+                    Create User
+                  </button>
+
+                </form>
+
+              </div>
+
+              {/* SYSTEM OVERVIEW */}
+
+              <div
+                className="panel"
+                id="system-overview"
+              >
+
+                <PanelHeader
+                  eyebrow="SYSTEM"
+                  title="System Overview"
+                  description="Current configuration of the service management system."
+                />
+
+                <div className="overview-list">
+
+                  <OverviewItem
+                    icon="♙"
+                    title="User Management"
+                    text="Create and manage college service accounts."
+                  />
+
+                  <OverviewItem
+                    icon="▤"
+                    title="Service Categories"
+                    text="6 service categories are currently configured."
+                  />
+
+                  <OverviewItem
+                    icon="✓"
+                    title="System Status"
+                    text="All core application services are active."
+                  />
+
+                  <OverviewItem
+                    icon="⚙"
+                    title="Access Control"
+                    text="Role-based access is enabled for all users."
+                  />
+
+                </div>
+
+              </div>
+
+            </section>
+
+            {/* USER TABLE */}
+
+            <section
+              className="panel"
+              id="user-management"
+            >
+
+              <PanelHeader
+                eyebrow="USER MANAGEMENT"
+                title="System Users"
+                description="View all registered accounts and their assigned roles."
+                action={
+                  <button
                     className="secondary-button"
-                    onClick={loadAdminUsers}
+                    onClick={loadUsers}
                   >
                     Refresh Users
                   </button>
+                }
+              />
 
-                </section>
+              {users.length === 0 ? (
+                <EmptyState message="No users found." />
+              ) : (
+                <div className="user-table-wrapper">
 
+                  <div className="user-table">
 
-                <section className="panel requests-panel">
-
-                  <div className="panel-header">
-
-                    <div>
-
-                      <h2>System Users</h2>
-
-                      <p>
-                        Students, faculty, service staff,
-                        service leads, and administrators.
-                      </p>
-
+                    <div className="user-table-header">
+                      <span>User</span>
+                      <span>User ID</span>
+                      <span>Email</span>
+                      <span>Role</span>
                     </div>
 
+                    {users.map((item) => (
+                      <div
+                        className="user-table-row"
+                        key={item.id}
+                      >
 
-                    <button
-                      className="secondary-button"
-                      onClick={() =>
-                        setAdminPage("dashboard")
-                      }
-                    >
-                      ← Back
-                    </button>
-
-                  </div>
-
-
-                  {adminUsers.length === 0 ? (
-
-                    <EmptyState
-                      message="No users found."
-                    />
-
-                  ) : (
-
-                    <div className="request-table">
-
-                      <div className="table-header">
-
-                        <span>Name</span>
-                        <span>Email</span>
-                        <span>Role</span>
-
-                      </div>
-
-
-                      {adminUsers.map((adminUser) => (
-
-                        <div
-                          className="table-row"
-                          key={adminUser.id}
-                        >
-
-                          <div className="table-request">
-
-                            <strong>
-                              {adminUser.name}
-                            </strong>
-
-                            <span>
-                              ID: {adminUser.id}
-                            </span>
-
+                        <div className="user-cell">
+                          <div className="table-avatar">
+                            {item.name
+                              ?.charAt(0)
+                              .toUpperCase()}
                           </div>
 
-
-                          <span>
-                            {adminUser.email}
-                          </span>
-
-
-                          <span>
-                            {roleNames[adminUser.role] ||
-                              adminUser.role}
-                          </span>
-
+                          <strong>
+                            {item.name}
+                          </strong>
                         </div>
 
-                      ))}
+                        <span className="muted-text">
+                          {item.id}
+                        </span>
 
-                    </div>
+                        <span className="muted-text">
+                          {item.email}
+                        </span>
 
-                  )}
-
-                </section>
-
-              </>
-            )}
-
-
-            {/* =================================================
-                SERVICE CATEGORIES
-            ================================================= */}
-
-            {adminPage === "categories" && (
-              <>
-
-                <section className="page-intro">
-
-                  <div>
-
-                    <h2>Service Categories</h2>
-
-                    <p>
-                      View the services available in the
-                      college service request system.
-                    </p>
-
-                  </div>
-
-
-                  <button
-                    className="secondary-button"
-                    onClick={loadAdminCategories}
-                  >
-                    Refresh Categories
-                  </button>
-
-                </section>
-
-
-                <section className="panel requests-panel">
-
-                  <div className="panel-header">
-
-                    <div>
-
-                      <h2>Available Services</h2>
-
-                      <p>
-                        Categories used when creating
-                        service requests.
-                      </p>
-
-                    </div>
-
-
-                    <button
-                      className="secondary-button"
-                      onClick={() =>
-                        setAdminPage("dashboard")
-                      }
-                    >
-                      ← Back
-                    </button>
-
-                  </div>
-
-
-                  {adminCategories.length === 0 ? (
-
-                    <EmptyState
-                      message="No categories found."
-                    />
-
-                  ) : (
-
-                    <div className="request-table">
-
-                      <div className="table-header">
-
-                        <span>Category ID</span>
-                        <span>Name</span>
-                        <span>Status</span>
+                        <span
+                          className={`role-badge role-${item.role}`}
+                        >
+                          {roleNames[item.role] ||
+                            item.role}
+                        </span>
 
                       </div>
+                    ))}
 
+                  </div>
 
-                      {adminCategories.map((category) => (
+                </div>
+              )}
 
-                        <div
-                          className="table-row"
-                          key={category.id}
-                        >
-
-                          <span>
-                            {category.id}
-                          </span>
-
-
-                          <div className="table-request">
-
-                            <strong>
-                              {category.name ||
-                                category.title ||
-                                category.id}
-                            </strong>
-
-                          </div>
-
-
-                          <span className="status-badge status-resolved">
-                            Active
-                          </span>
-
-                        </div>
-
-                      ))}
-
-                    </div>
-
-                  )}
-
-                </section>
-
-              </>
-            )}
-
+            </section>
           </>
         )}
 
@@ -1712,10 +1661,68 @@ function App() {
   );
 }
 
+// =====================================================
+// STAT CARD
+// =====================================================
 
-// =========================================================
-// REQUEST LIST COMPONENT
-// =========================================================
+function StatCard({
+  icon,
+  label,
+  value,
+  variant,
+}) {
+  return (
+    <div className="stat-card">
+
+      <div className={`stat-icon ${variant}`}>
+        {icon}
+      </div>
+
+      <div className="stat-content">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+
+    </div>
+  );
+}
+
+// =====================================================
+// PANEL HEADER
+// =====================================================
+
+function PanelHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+}) {
+  return (
+    <div className="panel-header">
+
+      <div>
+        <span className="panel-eyebrow">
+          {eyebrow}
+        </span>
+
+        <h2>{title}</h2>
+
+        <p>{description}</p>
+      </div>
+
+      {action && (
+        <div className="panel-action">
+          {action}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// =====================================================
+// REQUEST LIST
+// =====================================================
 
 function RequestList({
   requests,
@@ -1725,9 +1732,7 @@ function RequestList({
 }) {
   if (requests.length === 0) {
     return (
-      <EmptyState
-        message="No service requests found. Click Refresh Requests to load your requests."
-      />
+      <EmptyState message="No service requests found." />
     );
   }
 
@@ -1740,9 +1745,7 @@ function RequestList({
         <span>Status</span>
       </div>
 
-
       {requests.map((request) => (
-
         <div
           className="table-row"
           key={request.id}
@@ -1750,9 +1753,7 @@ function RequestList({
 
           <div className="table-request">
 
-            <strong>
-              {request.title}
-            </strong>
+            <strong>{request.title}</strong>
 
             <span>
               {request.description}
@@ -1760,46 +1761,72 @@ function RequestList({
 
           </div>
 
-
-          <span>
-            {categoryNames[request.category_id] ||
-              request.category_id}
+          <span className="request-category">
+            {categoryNames[
+              request.category_id
+            ] || request.category_id}
           </span>
 
-
           <span
-            className={getStatusClass(request.status)}
+            className={getStatusClass(
+              request.status
+            )}
           >
-            {statusLabels[request.status] ||
-              request.status}
+            {statusLabels[
+              request.status
+            ] || request.status}
           </span>
 
         </div>
-
       ))}
 
     </div>
   );
 }
 
+// =====================================================
+// OVERVIEW ITEM
+// =====================================================
 
-// =========================================================
+function OverviewItem({
+  icon,
+  title,
+  text,
+}) {
+  return (
+    <div className="overview-item">
+
+      <div className="overview-icon">
+        {icon}
+      </div>
+
+      <div>
+        <h3>{title}</h3>
+        <p>{text}</p>
+      </div>
+
+    </div>
+  );
+}
+
+// =====================================================
 // EMPTY STATE
-// =========================================================
+// =====================================================
 
 function EmptyState({ message }) {
   return (
     <div className="empty-state">
 
       <div className="empty-icon">
-        ▣
+        ○
       </div>
+
+      <h3>Nothing here yet</h3>
 
       <p>{message}</p>
 
     </div>
   );
 }
-
 
 export default App;
